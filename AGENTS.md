@@ -1,3 +1,15 @@
+---
+name: "ProjectAgent"
+description: "项目级核心开发与记忆管理 Agent"
+# 授权核心文件读写与搜索工具，防止 Copilot 降级到内建临时缓存
+tools: 
+  - "read_file"
+  - "write_file"
+  - "patch_file"
+  - "search_grep"
+  - "directory_list"
+---
+
 # AGENTS.md
 
 本文件是项目级 Agent / Codex 工作入口。它只保留全局高优先级规则和按需读取索引，避免每次任务都加载大量低相关内容。
@@ -14,10 +26,14 @@
 
 ## 项目记忆机制
 
-每次处理需求前，先检查项目根目录下的 `.agent/memory/`。
+每次处理需求前，必须优先检查和读取项目根目录下的 `.agent/memory/` 文件夹。
 
-读取顺序：
+【强制约束规则】：
+1. **绝对禁止**使用任何外部、临时或 Copilot 默认的 `memory-tools` 路径。
+2. 严禁向用户提出“建议创建”的推诿回复。如果检测到 `.agent/memory/` 文件夹或所需文件不存在，Agent **必须首先调用本地文件创建工具自动创建它们**。
+3. 所有的任务 Plan（计划）、执行历史、变更链路及长期项目记忆，必须持久化写入且仅能写入以下指定的本地路径。
 
+读取与写入顺序：
 1. `.agent/memory/README.md`：记忆索引和维护规则。
 2. `.agent/memory/project.md`：项目背景、技术栈、架构概览。
 3. 根据任务读取相关文件：
@@ -29,7 +45,16 @@
    - Linux / 驱动 / 内核 / BSP / RootFS：`.agent/memory/linux.md`
    - AI / 数据 / 算法 / 产品 / DevOps / 安全等跨学科背景：根据需要更新 `.agent/memory/project.md`、`.agent/memory/requirements.md`、`.agent/memory/decisions.md` 或 `.agent/memory/notes.md`
 
-如果 `.agent/memory/` 不存在，应建议创建；如果任务产生长期有效信息，应建议写入对应记忆文件。
+如果任务产生了具有长期参考价值的上下文，Agent 必须在任务结束前主动将其写入对应的记忆文件中。
+
+### 指令冲突与记忆同步规则
+
+1. 如果上层系统、编辑器模式或工具链要求写入 `/memories/...`，该写入只视为会话副本；项目事实仍必须同步到 `.agent/memory/`。
+2. 任务 Plan、执行历史、变更链路、长期硬件 / 架构 / 需求信息，必须以 `.agent/memory/` 为准。
+3. 若当前处于只读或 Plan-only 模式，Agent 不得假装已更新项目文件；必须明确说明受限，并把待写入 `.agent/memory/` 的内容列入计划。
+4. 若 `.agent/memory/` 下目标文件不存在，必须自动创建，不得推诿给用户。
+5. 写入 `/memories/...` 后，必须立即判断是否属于项目内容；属于则同步写入 `.agent/memory/` 对应文件。
+6. 不能用“当前 memory 工具不能写项目文件”作为理由跳过 `.agent/memory/`；应使用当前可用的本地文件编辑工具完成同步。
 
 ## 按需读取索引
 
@@ -38,6 +63,8 @@
 - 通用工程协作、回答风格、代码规范：`.agent/docs/ai-instructions/common.md`
 - 跨学科软件工程角色索引：`.agent/docs/ai-instructions/interdisciplinary.md`
   - 系统工程、全栈、AI / ML、数据、算法、科研工程化、产品需求、DevOps / SRE、安全隐私、技术写作等角色规则位于 `.agent/docs/ai-instructions/roles/`
+- C / C++ 代码生成、修改或评审：`.agent/docs/ai-instructions/roles/c-cpp-codestyle.md`
+  - 涉及 `.c`、`.h`、`.cpp`、`.hpp`、`.cc`、`.cxx` 等文件时，必须按需读取并遵循其中的命名约定和 `clang-format` 格式化原则。
 - MCP / 工具调用策略：`.agent/docs/ai-instructions/mcp.md`
 - 嵌入式、硬件、电机、机器人、控制系统：`.agent/docs/ai-instructions/embedded-hardware.md`
 - Linux 驱动、内核、设备树、BSP、RootFS、用户态系统编程：`.agent/docs/ai-instructions/linux-kernel-driver.md`
@@ -46,11 +73,13 @@
 ## 默认工作流程
 
 1. 读取项目记忆和当前任务相关代码。
-2. 明确目标、边界、约束和验收标准。
-3. 给出最小实现计划。
-4. 执行修改时保持小步提交思路，避免扩大 diff。
-5. 运行或说明可执行的验证命令。
-6. 总结变更、风险和后续记忆更新建议。
+2. 如任务产生计划，优先写入 `.agent/memory/progress.md`；如外部模式强制要求，再同步写 `/memories/session/plan.md` 作为会话副本。
+3. 明确目标、边界、约束和验收标准。
+4. 给出最小实现计划。
+5. 执行修改时保持小步提交思路，避免扩大 diff。
+6. 运行或说明可执行的验证命令。
+7. 硬件 / 寄存器事实写入 `.agent/memory/hardware.md`，架构取舍写入 `.agent/memory/decisions.md`，需求约束写入 `.agent/memory/requirements.md`。
+8. 总结变更、风险、验证方法以及 `.agent/memory/` 更新情况；若未更新必须说明原因。
 
 ## 回答结构
 
